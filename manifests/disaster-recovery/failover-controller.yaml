@@ -1,0 +1,333 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterfailovers.fintech.internal
+  annotations:
+    description: "CRD para definir políticas de failover entre clusters Kubernetes"
+    controller-gen.kubebuilder.io/version: v0.14.0
+    cert-manager.io/inject-ca-from: "disaster-recovery/failover-controller-cert"
+spec:
+  group: fintech.internal
+  names:
+    kind: ClusterFailover
+    listKind: ClusterFailoverList
+    plural: clusterfailovers
+    singular: clusterfailover
+    shortNames:
+      - cf
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - primaryCluster
+                - standbyCluster
+                - healthCheckEndpoint
+                - failoverStrategy
+              properties:
+                primaryCluster:
+                  type: string
+                  description: "Nombre del cluster primario que está fallando"
+                standbyCluster:
+                  type: string
+                  description: "Nombre del cluster standby que promoted"
+                healthCheckEndpoint:
+                  type: string
+                  description: "Endpoint HTTP para health checks del cluster standby"
+                failoverStrategy:
+                  type: string
+                  enum:
+                    - automatic
+                    - manual-approval
+                    - staged
+                  default: automatic
+                timeoutSeconds:
+                  type: integer
+                  default: 180
+                  description: "Timeout en segundos para el failover (3 minutos por defecto)"
+                healthCheckIntervalSeconds:
+                  type: integer
+                  default: 10
+                  description: "Intervalo de verificación de salud"
+                healthCheckThreshold:
+                  type: integer
+                  default: 3
+                  description: "Número de fallos consecutivos antes de iniciar failover"
+                preFailoverScript:
+                  type: string
+                  description: "Script o comando a ejecutar antes del failover"
+                postFailoverScript:
+                  type: string
+                  description: "Script o comando a ejecutar después del failover"
+                rollbackEnabled:
+                  type: boolean
+                  default: true
+                  description: "Habilitar rollback automático si el failover falla"
+                notificationConfig:
+                  type: object
+                  properties:
+                    slackWebhook:
+                      type: string
+                    emailRecipients:
+                      type: array
+                      items:
+                        type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Idle
+                    - HealthChecking
+                    - PreFailoverExecuting
+                    - FailoverInProgress
+                    - PostFailoverExecuting
+                    - Completed
+                    - Failed
+                    - RollingBack
+                startTime:
+                  type: string
+                  format: date-time
+                completionTime:
+                  type: string
+                  format: date-time
+                lastHealthCheck:
+                  type: string
+                  format: date-time
+                healthCheckFailures:
+                  type: integer
+                clusterStatus:
+                  type: object
+                  properties:
+                    primary:
+                      type: string
+                    standby:
+                      type: string
+                errorMessage:
+                  type: string
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failover-controller-config
+  namespace: disaster-recovery
+  annotations:
+    description: "Configuración del controller de failover"
+data:
+  config.yaml: |
+    controller:
+      leaderElection:
+        enabled: true
+        leaseDuration: 15s
+        renewDeadline: 10s
+        retryPeriod: 5s
+      metrics:
+        enabled: true
+        port: 8080
+      healthCheck:
+        defaultTimeoutSeconds: 180
+        defaultIntervalSeconds: 10
+        defaultThreshold: 3
+        timeoutMultiplier: 1.5
+      failover:
+        maxRetries: 3
+        retryDelaySeconds: 30
+        preFailoverGracePeriodSeconds: 30
+        postFailoverGracePeriodSeconds: 60
+      logging:
+        level: info
+        format: json
+      notification:
+        enabled: true
+        retryAttempts: 3
+        retryDelaySeconds: 10
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: failover-controller-tls
+  namespace: disaster-recovery
+type: kubernetes.io/tls
+data:
+  # Certificados TLS para comunicación segura entre controllers
+  # Base64 encoded - reemplazar con valores reales en producción
+  ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.key: LS0tLS1CRUdJTiBDUktQVEFEQVFBLS0tLS0tCk1JSUVBUU1Fd0RRWUo3SUNBZ0VDQXdnZ0lFaDBWR0F3SGhjTk1qTXdNVEF4TURBd01EQXdXaGNOTWpNd01UQXhNREF3TURBdwpXakFlTVJ3d0dnWURWUVFEREJOaGNIQXVaWGhoYlhCc1pTNWpiMjBnTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJCnpqMERBUWNEUWdBRXBsYWNlSG9sZGVyQ2VydGlmaWNhdGVEYXRhS2V5R2VuZXJhdGVkS2V5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: failover-controller
+  namespace: disaster-recovery
+  labels:
+    app: failover-controller
+    component: disaster-recovery
+    version: v1.0.0
+  annotations:
+    description: "Controller de failover que gestiona la promoción de clusters standby"
+    owner: "sre-team@fintech.internal"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: failover-controller
+  template:
+    metadata:
+      labels:
+        app: failover-controller
+        component: disaster-recovery
+        version: v1.0.0
+    spec:
+      serviceAccountName: failover-controller
+      priorityClassName: system-cluster-critical
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: failover-controller
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: controller
+          image: fintech.azurecr.io/failover-controller:v1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            - containerPort: 8443
+              name: webhook
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CONTROLLER_CONFIG_PATH
+              value: /config/config.yaml
+            - name: LOG_LEVEL
+              value: "info"
+            - name: HEALTH_CHECK_TIMEOUT
+              value: "180"
+            - name: ETCD_ENDPOINTS
+              value: "https://etcd-0.fintech.internal:2379,https://etcd-1.fintech.internal:2379,https://etcd-2.fintech.internal:2379"
+            - name: ETCD_CA_PATH
+              value: /etc/etcd/tls/ca.crt
+            - name: ETCD_CERT_PATH
+              value: /etc/etcd/tls/server.crt
+            - name: ETCD_KEY_PATH
+              value: /etc/etcd/tls/server.key
+            - name: VAULT_ADDR
+              value: "https://vault.fintech.internal:8200"
+            - name: VAULT_CACERT
+              value: /etc/vault/tls/ca.crt
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: etcd-tls
+              mountPath: /etc/etcd/tls
+              readOnly: true
+            - name: vault-tls
+              mountPath: /etc/vault/tls
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            capabilities:
+              drop:
+                - ALL
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: config
+          configMap:
+            name: failover-controller-config
+        - name: etcd-tls
+          secret:
+            secretName: etcd-client-tls
+        - name: vault-tls
+          secret:
+            secretName: vault-client-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: failover-controller
+  namespace: disaster-recovery
+  labels:
+    app: failover-controller
+spec:
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: webhook
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
+  selector:
+    app: failover-controller
+  clusterIP: None
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: failover-controller
+  namespace: disaster-recovery
+  annotations:
+    description: "ServiceAccount para el controller de failover"
+    owner: "sre-team@fintech.internal"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: failover-controller-pdb
+  namespace: disaster-recovery
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: failover-controller

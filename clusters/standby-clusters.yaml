@@ -1,0 +1,440 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: fintech-standby-us-west-2
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/role: standby
+    cluster.fintech.internal/region: us-west-2
+    cluster.fintech.internal/environment: production
+    cluster.fintech.internal/tier: critical
+    cluster.fintech.internal/failover-target: fintech-primary-us-east-1
+    argocd.fintech.internal/app-set: fintech-prod-standby
+    crossplane.fintech.internal/provider: aws
+  annotations:
+    cluster.fintech.internal/description: "Cluster standby para failover en US West 2"
+    cluster.fintech.internal/owner: "Platform Engineering Team"
+    cluster.fintech.internal/contact: "platform@fintech.internal"
+    cluster.fintech.internal/sla-availability: "99.99%"
+    cluster.fintech.internal/rpo: "1min"
+    cluster.fintech.internal/rto: "5min"
+    health.fintech.internal/interval: "30s"
+    health.fintech.internal/timeout: "10s"
+    health.fintech.internal/grace-period: "2m"
+    health.fintech.internal/liveness-probe: "enabled"
+    health.fintech.internal/readiness-probe: "enabled"
+    monitoring.fintech.internal/prometheus: "enabled"
+    monitoring.fintech.internal/scrape-interval: "15s"
+    monitoring.fintech.internal/metrics-path: "/metrics"
+    monitoring.fintech.internal/alert-manager: "fintech-alerts"
+    backup.fintech.internal/etcd-backup: "enabled"
+    backup.fintech.internal/etcd-backup-schedule: "0 */6 * * *"
+    backup.fintech.internal/etcd-backup-retention: "7d"
+    failover.fintech.internal/auto-failover: "enabled"
+    failover.fintech.internal/priority: "2"
+    failover.fintech.internal/health-check-endpoint: "/healthz"
+    failover.fintech.internal/failover-timeout: "300s"
+    failover.fintech.internal/sync-from-primary: "enabled"
+    failover.fintech.internal/replication-lag-threshold: "10s"
+    failover.fintech.internal/pre-failover-script: "/scripts/pre-failover-hooks.sh"
+    failover.fintech.internal/post-failover-script: "/scripts/post-failover-hooks.sh"
+    vault.fintech.internal/secrets-engine: "kv-v2"
+    vault.fintech.internal/auth-method: "kubernetes"
+    vault.fintech.internal/secret-path: "secret/data/fintech/standby-us-west-2"
+    external-secrets.fintech.internal/store: "vault-backend"
+    external-secrets.fintech.internal/sync-interval: "5m"
+    argocd.fintech.internal/project: "fintech-production-standby"
+    argocd.fintech.internal/source-repo: "https://github.com/fintech/multi-cluster-control-plane"
+    argocd.fintech.internal/sync-policy: "automated"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "10.246.0.0/16"
+    services:
+      cidrBlocks:
+        - "10.247.0.0/16"
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: fintech-standby-us-west-2-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: fintech-standby-us-west-2
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: fintech-standby-eu-west-1
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/role: standby
+    cluster.fintech.internal/region: eu-west-1
+    cluster.fintech.internal/environment: production
+    cluster.fintech.internal/tier: critical
+    cluster.fintech.internal/failover-target: fintech-primary-us-east-1
+    argocd.fintech.internal/app-set: fintech-prod-standby
+    crossplane.fintech.internal/provider: aws
+  annotations:
+    cluster.fintech.internal/description: "Cluster standby para failover en EU West 1"
+    cluster.fintech.internal/owner: "Platform Engineering Team"
+    cluster.fintech.internal/contact: "platform@fintech.internal"
+    cluster.fintech.internal/sla-availability: "99.99%"
+    cluster.fintech.internal/rpo: "1min"
+    cluster.fintech.internal/rto: "5min"
+    health.fintech.internal/interval: "30s"
+    health.fintech.internal/timeout: "10s"
+    health.fintech.internal/grace-period: "2m"
+    health.fintech.internal/liveness-probe: "enabled"
+    health.fintech.internal/readiness-probe: "enabled"
+    monitoring.fintech.internal/prometheus: "enabled"
+    monitoring.fintech.internal/scrape-interval: "15s"
+    monitoring.fintech.internal/metrics-path: "/metrics"
+    monitoring.fintech.internal/alert-manager: "fintech-alerts"
+    backup.fintech.internal/etcd-backup: "enabled"
+    backup.fintech.internal/etcd-backup-schedule: "0 */6 * * *"
+    backup.fintech.internal/etcd-backup-retention: "7d"
+    failover.fintech.internal/auto-failover: "enabled"
+    failover.fintech.internal/priority: "3"
+    failover.fintech.internal/health-check-endpoint: "/healthz"
+    failover.fintech.internal/failover-timeout: "300s"
+    failover.fintech.internal/sync-from-primary: "enabled"
+    failover.fintech.internal/replication-lag-threshold: "10s"
+    failover.fintech.internal/pre-failover-script: "/scripts/pre-failover-hooks.sh"
+    failover.fintech.internal/post-failover-script: "/scripts/post-failover-hooks.sh"
+    vault.fintech.internal/secrets-engine: "kv-v2"
+    vault.fintech.internal/auth-method: "kubernetes"
+    vault.fintech.internal/secret-path: "secret/data/fintech/standby-eu-west-1"
+    external-secrets.fintech.internal/store: "vault-backend"
+    external-secrets.fintech.internal/sync-interval: "5m"
+    argocd.fintech.internal/project: "fintech-production-standby"
+    argocd.fintech.internal/source-repo: "https://github.com/fintech/multi-cluster-control-plane"
+    argocd.fintech.internal/sync-policy: "automated"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "10.248.0.0/16"
+    services:
+      cidrBlocks:
+        - "10.249.0.0/16"
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: fintech-standby-eu-west-1-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: fintech-standby-eu-west-1
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: fintech-standby-ap-southeast-1
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/role: standby
+    cluster.fintech.internal/region: ap-southeast-1
+    cluster.fintech.internal/environment: production
+    cluster.fintech.internal/tier: critical
+    cluster.fintech.internal/failover-target: fintech-primary-us-east-1
+    argocd.fintech.internal/app-set: fintech-prod-standby
+    crossplane.fintech.internal/provider: aws
+  annotations:
+    cluster.fintech.internal/description: "Cluster standby para failover en Asia Pacific Singapore"
+    cluster.fintech.internal/owner: "Platform Engineering Team"
+    cluster.fintech.internal/contact: "platform@fintech.internal"
+    cluster.fintech.internal/sla-availability: "99.99%"
+    cluster.fintech.internal/rpo: "1min"
+    cluster.fintech.internal/rto: "5min"
+    health.fintech.internal/interval: "30s"
+    health.fintech.internal/timeout: "10s"
+    health.fintech.internal/grace-period: "2m"
+    health.fintech.internal/liveness-probe: "enabled"
+    health.fintech.internal/readiness-probe: "enabled"
+    monitoring.fintech.internal/prometheus: "enabled"
+    monitoring.fintech.internal/scrape-interval: "15s"
+    monitoring.fintech.internal/metrics-path: "/metrics"
+    monitoring.fintech.internal/alert-manager: "fintech-alerts"
+    backup.fintech.internal/etcd-backup: "enabled"
+    backup.fintech.internal/etcd-backup-schedule: "0 */6 * * *"
+    backup.fintech.internal/etcd-backup-retention: "7d"
+    failover.fintech.internal/auto-failover: "enabled"
+    failover.fintech.internal/priority: "4"
+    failover.fintech.internal/health-check-endpoint: "/healthz"
+    failover.fintech.internal/failover-timeout: "300s"
+    failover.fintech.internal/sync-from-primary: "enabled"
+    failover.fintech.internal/replication-lag-threshold: "10s"
+    failover.fintech.internal/pre-failover-script: "/scripts/pre-failover-hooks.sh"
+    failover.fintech.internal/post-failover-script: "/scripts/post-failover-hooks.sh"
+    vault.fintech.internal/secrets-engine: "kv-v2"
+    vault.fintech.internal/auth-method: "kubernetes"
+    vault.fintech.internal/secret-path: "secret/data/fintech/standby-ap-southeast-1"
+    external-secrets.fintech.internal/store: "vault-backend"
+    external-secrets.fintech.internal/sync-interval: "5m"
+    argocd.fintech.internal/project: "fintech-production-standby"
+    argocd.fintech.internal/source-repo: "https://github.com/fintech/multi-cluster-control-plane"
+    argocd.fintech.internal/sync-policy: "automated"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "10.250.0.0/16"
+    services:
+      cidrBlocks:
+        - "10.251.0.0/16"
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: fintech-standby-ap-southeast-1-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: fintech-standby-ap-southeast-1
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: fintech-standby-eu-central-1
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/role: standby
+    cluster.fintech.internal/region: eu-central-1
+    cluster.fintech.internal/environment: production
+    cluster.fintech.internal/tier: critical
+    cluster.fintech.internal/failover-target: fintech-primary-us-east-1
+    argocd.fintech.internal/app-set: fintech-prod-standby
+    crossplane.fintech.internal/provider: aws
+  annotations:
+    cluster.fintech.internal/description: "Cluster standby para failover en EU Central Frankfurt"
+    cluster.fintech.internal/owner: "Platform Engineering Team"
+    cluster.fintech.internal/contact: "platform@fintech.internal"
+    cluster.fintech.internal/sla-availability: "99.99%"
+    cluster.fintech.internal/rpo: "1min"
+    cluster.fintech.internal/rto: "5min"
+    health.fintech.internal/interval: "30s"
+    health.fintech.internal/timeout: "10s"
+    health.fintech.internal/grace-period: "2m"
+    health.fintech.internal/liveness-probe: "enabled"
+    health.fintech.internal/readiness-probe: "enabled"
+    monitoring.fintech.internal/prometheus: "enabled"
+    monitoring.fintech.internal/scrape-interval: "15s"
+    monitoring.fintech.internal/metrics-path: "/metrics"
+    monitoring.fintech.internal/alert-manager: "fintech-alerts"
+    backup.fintech.internal/etcd-backup: "enabled"
+    backup.fintech.internal/etcd-backup-schedule: "0 */6 * * *"
+    backup.fintech.internal/etcd-backup-retention: "7d"
+    failover.fintech.internal/auto-failover: "enabled"
+    failover.fintech.internal/priority: "5"
+    failover.fintech.internal/health-check-endpoint: "/healthz"
+    failover.fintech.internal/failover-timeout: "300s"
+    failover.fintech.internal/sync-from-primary: "enabled"
+    failover.fintech.internal/replication-lag-threshold: "10s"
+    failover.fintech.internal/pre-failover-script: "/scripts/pre-failover-hooks.sh"
+    failover.fintech.internal/post-failover-script: "/scripts/post-failover-hooks.sh"
+    vault.fintech.internal/secrets-engine: "kv-v2"
+    vault.fintech.internal/auth-method: "kubernetes"
+    vault.fintech.internal/secret-path: "secret/data/fintech/standby-eu-central-1"
+    external-secrets.fintech.internal/store: "vault-backend"
+    external-secrets.fintech.internal/sync-interval: "5m"
+    argocd.fintech.internal/project: "fintech-production-standby"
+    argocd.fintech.internal/source-repo: "https://github.com/fintech/multi-cluster-control-plane"
+    argocd.fintech.internal/sync-policy: "automated"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "10.252.0.0/16"
+    services:
+      cidrBlocks:
+        - "10.253.0.0/16"
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: fintech-standby-eu-central-1-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: fintech-standby-eu-central-1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: failover-configuration
+  namespace: fleet-management
+  labels:
+    config.fintech.internal/type: failover
+data:
+  failover-rules.yaml: |
+    failoverPolicies:
+      - name: primary-failure-detection
+        type: health-check
+        clusterSelector: cluster.fintech.internal/role=primary
+        checkInterval: 30s
+        failureThreshold: 3
+        recoveryThreshold: 2
+        timeout: 10s
+        actions:
+          - type: alert
+            target: pagerduty
+            severity: critical
+          - type: execute-failover
+            targetClusters:
+              - fintech-standby-us-west-2
+              - fintech-standby-eu-west-1
+              - fintech-standby-ap-southeast-1
+              - fintech-standby-eu-central-1
+      - name: replication-lag-detection
+        type: metric-threshold
+        clusterSelector: cluster.fintech.internal/role=standby
+        metric: etcd_replication_lag_seconds
+        threshold: 10
+        evaluationInterval: 15s
+        actions:
+          - type: alert
+            target: slack
+            severity: warning
+          - type: pause-failover
+            reason: "replication-lag-exceeded"
+      - name: split-brain-prevention
+        type: distributed-lock
+        lockName: failover-activation
+        lockTimeout: 300s
+        consensusRequired: quorum
+        regions:
+          - us-east-1
+          - us-west-2
+          - eu-west-1
+          - ap-southeast-1
+          - eu-central-1
+  priority-order.yaml: |
+    failoverPriority:
+      - cluster: fintech-standby-us-west-2
+        priority: 2
+        region: us-west-2
+        weight: 100
+        healthScore: 100
+      - cluster: fintech-standby-eu-west-1
+        priority: 3
+        region: eu-west-1
+        weight: 80
+        healthScore: 100
+      - cluster: fintech-standby-ap-southeast-1
+        priority: 4
+        region: ap-southeast-1
+        weight: 60
+        healthScore: 100
+      - cluster: fintech-standby-eu-central-1
+        priority: 5
+        region: eu-central-1
+        weight: 40
+        healthScore: 100
+  replication-config.yaml: |
+    replicationSettings:
+      mode: async
+      syncInterval: 1m
+      batchSize: 1000
+      compression: snappy
+      encryption: tls
+      sourceCluster: fintech-primary-us-east-1
+      targetClusters:
+        - fintech-standby-us-west-2
+        - fintech-standby-eu-west-1
+        - fintech-standby-ap-southeast-1
+        - fintech-standby-eu-central-1
+      resources:
+        - kind: Secret
+          apiVersion: v1
+          namespace: "*"
+        - kind: ConfigMap
+          apiVersion: v1
+          namespace: "*"
+        - kind: Service
+          apiVersion: v1
+          namespace: production
+        - kind: Ingress
+          apiVersion: networking.k8s.io/v1
+          namespace: production
+        - kind: Deployment
+          apiVersion: apps/v1
+          namespace: production
+        - kind: StatefulSet
+          apiVersion: apps/v1
+          namespace: production
+      filters:
+        exclude:
+          - field: metadata.annotations
+            contains: cluster.fintech.internal/local-only
+        include:
+          - field: metadata.labels
+            contains: cluster.fintech.internal/replicate=true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: failover-coordinator
+  namespace: fleet-management
+  labels:
+    app.fintech.internal: failover-coordinator
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+    - port: 8443
+      targetPort: 8443
+      name: https
+  selector:
+    app: failover-coordinator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: failover-coordinator
+  namespace: fleet-management
+  labels:
+    app.fintech.internal: failover-coordinator
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: failover-coordinator
+  template:
+    metadata:
+      labels:
+        app: failover-coordinator
+    spec:
+      serviceAccountName: failover-controller
+      containers:
+        - name: coordinator
+          image: fintech/failover-coordinator:v1.0.0
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+          env:
+            - name: PRIMARY_CLUSTER
+              value: fintech-primary-us-east-1
+            - name: STANDBY_CLUSTERS
+              value: fintech-standby-us-west-2,fintech-standby-eu-west-1,fintech-standby-ap-southeast-1,fintech-standby-eu-central-1
+            - name: FAILOVER_TIMEOUT
+              value: "300"
+            - name: HEALTH_CHECK_INTERVAL
+              value: "30"
+            - name: REPLICATION_LAG_THRESHOLD
+              value: "10"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: failover-configuration

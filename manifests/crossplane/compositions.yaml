@@ -1,0 +1,637 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xdatabases.rds.fintech.internal
+  labels:
+    app.kubernetes.io/name: xdatabase
+    app.kubernetes.io/part-of: crossplane
+    category: database
+  annotations:
+    description: "Definición de recurso compuesto para bases de datos RDS PostgreSQL/MySQL"
+    owner: "plataforma-infraestructura"
+    documentation: "https://docs.crossplane.io/v1.14/concepts/composition/"
+spec:
+  group: rds.fintech.internal
+  names:
+    kind: XDatabase
+    plural: xdatabases
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+    - name: v1beta1
+      served: true
+      referenceable: false
+  claimNames:
+    kind: DatabaseClaim
+    plural: databaseclaims
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xbuckets.s3.fintech.internal
+  labels:
+    app.kubernetes.io/name: xbucket
+    app.kubernetes.io/part-of: crossplane
+    category: storage
+  annotations:
+    description: "Definición de recurso compuesto para buckets S3"
+    owner: "plataforma-infraestructura"
+    documentation: "https://docs.crossplane.io/v1.14/concepts/composition/"
+spec:
+  group: s3.fintech.internal
+  names:
+    kind: XBucket
+    plural: xbuckets
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+    - name: v1beta1
+      served: true
+      referenceable: false
+  claimNames:
+    kind: BucketClaim
+    plural: bucketclaims
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xiamroles.iam.fintech.internal
+  labels:
+    app.kubernetes.io/name: xiamrole
+    app.kubernetes.io/part-of: crossplane
+    category: security
+  annotations:
+    description: "Definición de recurso compuesto para roles IAM"
+    owner: "plataforma-infraestructura"
+    documentation: "https://docs.crossplane.io/v1.14/concepts/composition/"
+spec:
+  group: iam.fintech.internal
+  names:
+    kind: XIAMRole
+    plural: xiamroles
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+    - name: v1beta1
+      served: true
+      referenceable: false
+  claimNames:
+    kind: IAMRoleClaim
+    plural: iamroleclaims
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xredis.elasticache.fintech.internal
+  labels:
+    app.kubernetes.io/name: xredis
+    app.kubernetes.io/part-of: crossplane
+    category: cache
+  annotations:
+    description: "Definición de recurso compuesto para clusters ElastiCache Redis"
+    owner: "plataforma-infraestructura"
+    documentation: "https://docs.crossplane.io/v1.14/concepts/composition/"
+spec:
+  group: elasticache.fintech.internal
+  names:
+    kind: XRedis
+    plural: xredises
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+    - name: v1beta1
+      served: true
+      referenceable: false
+  claimNames:
+    kind: RedisClaim
+    plural: redisclaims
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xsecrets.secretsmanager.fintech.internal
+  labels:
+    app.kubernetes.io/name: xsecret
+    app.kubernetes.io/part-of: crossplane
+    category: security
+  annotations:
+    description: "Definición de recurso compuesto para secrets en AWS Secrets Manager"
+    owner: "plataforma-infraestructura"
+    documentation: "https://docs.crossplane.io/v1.14/concepts/composition/"
+spec:
+  group: secretsmanager.fintech.internal
+  names:
+    kind: XSecret
+    plural: xsecrets
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+    - name: v1beta1
+      served: true
+      referenceable: false
+  claimNames:
+    kind: SecretClaim
+    plural: secretclaims
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: database.rds.postgresql.fintech.internal
+  namespace: crossplane-system
+  labels:
+    app.kubernetes.io/name: composition-postgresql
+    provider: aws
+    type: database
+  annotations:
+    description: "Composición para crear instancias RDS PostgreSQL de alta disponibilidad"
+    owner: "plataforma-infraestructura"
+    composition.apiextensions.crossplane.io/writeConnectionSecrets: "true"
+spec:
+  writeConnectionSecrets: true
+  compositeTypeRef:
+    apiVersion: rds.fintech.internal/v1alpha1
+    kind: XDatabase
+  patchSets:
+    - name: common-labels
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.labels
+          toFieldPath: metadata.labels
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          transforms:
+            - type: string
+              string:
+                fmt: "%s"
+    - name: tags
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.tags
+          toFieldPath: spec.forProvider.tags
+            
+  resources:
+    - name: dbSubnetGroup
+      base:
+        apiVersion: aws.upbound.io/v1beta1
+        kind: RDSSubnetGroup
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            description: "Subnet group para RDS PostgreSQL"
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+          providerConfigRef:
+            name: aws-default
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-subnet-group"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.vpcId
+          toFieldPath: spec.forProvider.vpcId
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.subnetIds
+          toFieldPath: spec.forProvider.subnetIdSelector.matchLabels
+          policy:
+            fromFieldPath: Required
+    
+    - name: dbSecurityGroup
+      base:
+        apiVersion: ec2.upbound.io/v1beta1
+        kind: SecurityGroup
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            description: "Security group para RDS PostgreSQL"
+            ingress:
+              - fromPort: 5432
+                toPort: 5432
+                protocol: tcp
+                cidrBlocks:
+                  - 10.0.0.0/8
+              - fromPort: 5432
+                toPort: 5432
+                protocol: tcp
+                ipv6CidrBlocks:
+                  - ::/0
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+          providerConfigRef:
+            name: aws-default
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.vpcId
+          toFieldPath: spec.forProvider.vpcIdSelector.matchLabels
+          policy:
+            fromFieldPath: Required
+    
+    - name: dbInstance
+      base:
+        apiVersion: rds.upbound.io/v1beta1
+        kind: Instance
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            engine: postgres
+            engineVersion: "15.4"
+            instanceClass: db.t3.medium
+            allocatedStorage: 100
+            maxAllocatedStorage: 500
+            storageType: gp3
+            storageEncrypted: true
+            multiAz: true
+            dbName: fintechdb
+            username: dbadmin
+            publiclyAccessible: false
+            vpcSecurityGroupIdSelector:
+              matchLabels:
+                app.kubernetes.io/managed-by: crossplane
+            dbSubnetGroupNameSelector:
+              matchLabels:
+                app.kubernetes.io/managed-by: crossplane
+            backupRetentionPeriod: 7
+            copyTagsToSnapshot: true
+            deletionProtection: true
+            skipFinalSnapshot: false
+            finalDbSnapshotIdentifier: "{{ .metadata.name }}-final-snapshot"
+            enabledCloudwatchLogsExports:
+              - postgresql
+              - upgrade
+            performanceInsightsEnabled: true
+            performanceInsightsKmsKeyIdSelector:
+              matchLabels:
+                type: kms-key
+            monitoringInterval: 60
+            monitoringRoleArnSelector:
+              matchLabels:
+                type: rds-monitoring-role
+            autoMinorVersionUpgrade: true
+            maintenanceWindow: "mon:03:00-mon:04:00"
+            backupWindow: "02:00-03:00"
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+              Project: fintech-platform
+          providerConfigRef:
+            name: aws-default
+          writeConnectionSecretToRef:
+            namespace: crossplane-system
+            prefix: db-
+      connectionDetails:
+        - fromConnectionSecretKey: endpoint
+          name: endpoint
+        - fromConnectionSecretKey: port
+          name: port
+        - fromConnectionSecretKey: username
+          name: username
+        - fromConnectionSecretKey: password
+          name: password
+        - fromConnectionSecretKey: dbname
+          name: dbname
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-postgres"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.engineVersion
+          toFieldPath: spec.forProvider.engineVersion
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.instanceClass
+          toFieldPath: spec.forProvider.instanceClass
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.allocatedStorage
+          toFieldPath: spec.forProvider.allocatedStorage
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.multiAz
+          toFieldPath: spec.forProvider.multiAz
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.backupRetentionDays
+          toFieldPath: spec.forProvider.backupRetentionPeriod
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.deletionProtection
+          toFieldPath: spec.forProvider.deletionProtection
+      readinessChecks:
+        - type: ConnectionCheck
+          fieldPath: status.atProvider.endpoint
+        - type: CheckAvailable
+          fieldPath: status.atProvider.dbInstanceStatus
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: bucket.s3.standard.fintech.internal
+  namespace: crossplane-system
+  labels:
+    app.kubernetes.io/name: composition-s3-bucket
+    provider: aws
+    type: storage
+  annotations:
+    description: "Composición para crear buckets S3 con configuración de seguridad"
+    owner: "plataforma-infraestructura"
+    composition.apiextensions.crossplane.io/writeConnectionSecrets: "true"
+spec:
+  writeConnectionSecrets: true
+  compositeTypeRef:
+    apiVersion: s3.fintech.internal/v1alpha1
+    kind: XBucket
+  resources:
+    - name: s3Bucket
+      base:
+        apiVersion: s3.upbound.io/v1beta1
+        kind: Bucket
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            accelerationStatus: Suspended
+            acl: private
+            corsRule: []
+            lifecycleRule: []
+            logging: []
+            objectLockEnabled: false
+            objectOwnership: BucketOwnerEnforced
+            serverSideEncryptionConfiguration:
+              - rule:
+                  applyServerSideEncryptionByDefault:
+                    sseAlgorithm: AES256
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+              Project: fintech-platform
+            versioning:
+              enabled: true
+              mfaDelete: Disabled
+            website: []
+          providerConfigRef:
+            name: aws-default
+          writeConnectionSecretToRef:
+            namespace: crossplane-system
+            prefix: s3-
+      connectionDetails:
+        - fromConnectionSecretKey: bucket-name
+          name: bucketName
+        - fromConnectionSecretKey: bucket-region
+          name: bucketRegion
+        - fromConnectionSecretKey: bucketArn
+          name: bucketArn
+        - fromConnectionSecretKey: bucketDomainName
+          name: bucketDomainName
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.versioningEnabled
+          toFieldPath: spec.forProvider.versioning[0].enabled
+    
+    - name: bucketPolicy
+      base:
+        apiVersion: s3.upbound.io/v1beta1
+        kind: BucketPolicy
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            bucketSelector:
+              matchLabels:
+                app.kubernetes.io/managed-by: crossplane
+            policy: |
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Sid": "DenyIncorrectEncryptionHeader",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::*/*",
+                    "Condition": {
+                      "StringNotEquals": {
+                        "s3:x-amz-server-side-encryption": "AES256"
+                      }
+                    }
+                  },
+                  {
+                    "Sid": "DenyUnEncryptedObjectUploads",
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::*/*",
+                    "Condition": {
+                      "Bool": {
+                        "s3:PutObjectServerSideEncryption": "false"
+                      }
+                    }
+                  }
+                ]
+              }
+          providerConfigRef:
+            name: aws-default
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-policy"
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: iamrole.standard.fintech.internal
+  namespace: crossplane-system
+  labels:
+    app.kubernetes.io/name: composition-iam-role
+    provider: aws
+    type: security
+  annotations:
+    description: "Composición para crear roles IAM con políticas asociadas"
+    owner: "plataforma-infraestructura"
+    composition.apiextensions.crossplane.io/writeConnectionSecrets: "true"
+spec:
+  writeConnectionSecrets: true
+  compositeTypeRef:
+    apiVersion: iam.fintech.internal/v1alpha1
+    kind: XIAMRole
+  resources:
+    - name: iamRole
+      base:
+        apiVersion: iam.upbound.io/v1beta1
+        kind: Role
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            name: ""
+            assumeRolePolicy: |
+              {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": ["eks.amazonaws.com", "ec2.amazonaws.com"]
+                    },
+                    "Action": "sts:AssumeRole"
+                  }
+                ]
+              }
+            forceDetach: true
+            maxSessionDuration: 3600
+            permissionsBoundary: ""
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+              Project: fintech-platform
+          providerConfigRef:
+            name: aws-default
+          writeConnectionSecretToRef:
+            namespace: crossplane-system
+            prefix: iam-role-
+      connectionDetails:
+        - fromConnectionSecretKey: role-arn
+          name: roleArn
+        - fromConnectionSecretKey: role-name
+          name: roleName
+        - fromConnectionSecretKey: role-id
+          name: roleId
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-role"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-role"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.assumeRolePolicy
+          toFieldPath: spec.forProvider.assumeRolePolicy
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.permissionsBoundary
+          toFieldPath: spec.forProvider.permissionsBoundary
+    
+    - name: iamPolicy
+      base:
+        apiVersion: iam.upbound.io/v1beta1
+        kind: Policy
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            name: ""
+            description: "Política generada por Crossplane para rol de fintech"
+            policy: |
+              {
+                "Version": "2012-10-17",
+                "Statement": []
+              }
+            tags:
+              Environment: production
+              ManagedBy: Crossplane
+              Project: fintech-platform
+          providerConfigRef:
+            name: aws-default
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-policy"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-policy"
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.policy
+          toFieldPath: spec.forProvider.policy
+    
+    - name: rolePolicyAttachment
+      base:
+        apiVersion: iam.upbound.io/v1beta1
+        kind: RolePolicyAttachment
+        metadata:
+          name: ""
+          labels:
+            app.kubernetes.io/managed-by: crossplane
+        spec:
+          forProvider:
+            region: us-east-1
+            roleNameSelector:
+              matchLabels:
+                app.kubernetes.io/managed-by: crossplane
+            policyArnSelector:
+              matchLabels:
+                app.kubernetes.io/managed-by: crossplane
+          providerConfigRef:
+            name: aws-default
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-attachment"

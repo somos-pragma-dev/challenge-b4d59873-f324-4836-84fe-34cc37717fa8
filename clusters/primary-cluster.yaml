@@ -1,0 +1,351 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: fintech-primary-us-east-1
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/role: primary
+    cluster.fintech.internal/region: us-east-1
+    cluster.fintech.internal/environment: production
+    cluster.fintech.internal/tier: critical
+    argocd.fintech.internal/app-set: fintech-prod
+    crossplane.fintech.internal/provider: aws
+  annotations:
+    cluster.fintech.internal/description: "Cluster primario principal para cargas de trabajo fintech en US East 1"
+    cluster.fintech.internal/owner: "Platform Engineering Team"
+    cluster.fintech.internal/contact: "platform@fintech.internal"
+    cluster.fintech.internal/sla-availability: "99.99%"
+    cluster.fintech.internal/rpo: "1min"
+    cluster.fintech.internal/rto: "5min"
+    health.fintech.internal/interval: "30s"
+    health.fintech.internal/timeout: "10s"
+    health.fintech.internal/grace-period: "2m"
+    health.fintech.internal/liveness-probe: "enabled"
+    health.fintech.internal/readiness-probe: "enabled"
+    monitoring.fintech.internal/prometheus: "enabled"
+    monitoring.fintech.internal/scrape-interval: "15s"
+    monitoring.fintech.internal/metrics-path: "/metrics"
+    monitoring.fintech.internal/alert-manager: "fintech-alerts"
+    backup.fintech.internal/etcd-backup: "enabled"
+    backup.fintech.internal/etcd-backup-schedule: "0 */6 * * *"
+    backup.fintech.internal/etcd-backup-retention: "7d"
+    backup.fintech.internal/velero-schedule: "daily-full"
+    failover.fintech.internal/auto-failover: "enabled"
+    failover.fintech.internal/priority: "1"
+    failover.fintech.internal/health-check-endpoint: "/healthz"
+    failover.fintech.internal/failover-timeout: "300s"
+    failover.fintech.internal/pre-failover-script: "/scripts/pre-failover-hooks.sh"
+    failover.fintech.internal/post-failover-script: "/scripts/post-failover-hooks.sh"
+    vault.fintech.internal/secrets-engine: "kv-v2"
+    vault.fintech.internal/auth-method: "kubernetes"
+    vault.fintech.internal/secret-path: "secret/data/fintech/primary-us-east-1"
+    external-secrets.fintech.internal/store: "vault-backend"
+    external-secrets.fintech.internal/sync-interval: "5m"
+    argocd.fintech.internal/project: "fintech-production"
+    argocd.fintech.internal/source-repo: "https://github.com/fintech/multi-cluster-control-plane"
+    argocd.fintech.internal/sync-policy: "automated"
+    argocd.fintech.internal/autosync: "true"
+    argocd.fintech.internal/prune: "true"
+    argocd.fintech.internal/self-heal: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "10.244.0.0/16"
+    services:
+      cidrBlocks:
+        - "10.245.0.0/16"
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: fintech-primary-us-east-1-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: fintech-primary-us-east-1
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: fintech-primary-us-east-1-control-plane
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/cluster-name: fintech-primary-us-east-1
+  annotations:
+    controlplane.fintech.internal/description: "Plano de control del cluster primario"
+    controlplane.fintech.internal/replicas: "3"
+    controlplane.fintech.internal/etcd-endpoints: "etcd-0.fintech-primary-etcd,etcd-1.fintech-primary-etcd,etcd-2.fintech-primary-etcd"
+    controlplane.fintech.internal/etcd-tls-enabled: "true"
+    controlplane.fintech.internal/api-server-ha: "enabled"
+    controlplane.fintech.internal/audit-logging: "enabled"
+    controlplane.fintech.internal/audit-policy: "/etc/kubernetes/audit-policy.yaml"
+spec:
+  replicas: 3
+  version: "v1.28.0"
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      etcd:
+        local:
+          dataDir: "/var/lib/etcd"
+          extraArgs:
+            listen-client-urls: "https://127.0.0.1:2379,https://$(HOST_IP):2379"
+            advertise-client-urls: "https://$(HOST_IP):2379"
+            listen-peer-urls: "https://$(HOST_IP):2380"
+            initial-advertise-peer-urls: "https://$(HOST_IP):2380"
+            initial-cluster: "etcd-0=https://$(HOST_IP):2380,etcd-1=https://$(HOST_1_IP):2380,etcd-2=https://$(HOST_2_IP):2380"
+            initial-cluster-state: "new"
+            initial-cluster-token: "etcd-cluster-fintech-primary"
+            name: "$(HOSTNAME)"
+          serverCertSANs:
+            - "localhost"
+            - "127.0.0.1"
+            - "$(HOST_IP)"
+          peerCertSANs:
+            - "localhost"
+            - "127.0.0.1"
+            - "$(HOST_IP)"
+      apiServer:
+        extraArgs:
+          authorization-mode: "Node,RBAC"
+          enable-admission-plugins: "NodeRestriction,PodSecurityPolicy,EventRateLimit"
+          audit-log-maxsize: "100"
+          audit-log-maxbackup: "10"
+          audit-log-maxage: "30"
+          profiling: "false"
+          service-account-issuer: "https://kubernetes.default.svc.cluster.local"
+          service-account-signing-key-file: "/etc/kubernetes/pki/sa.key"
+        extraVolumes:
+          - name: audit-log
+            hostPath: "/var/log/kubernetes/audit"
+            mountPath: /var/log/kubernetes/audit
+            readOnly: false
+          - name: audit-policy
+            hostPath: /etc/kubernetes/audit-policy.yaml
+            mountPath: /etc/kubernetes/audit-policy.yaml
+            readOnly: true
+        certSANs:
+          - "kubernetes"
+          - "kubernetes.default"
+          - "kubernetes.default.svc"
+          - "kubernetes.default.svc.cluster.local"
+          - "10.245.0.1"
+          - "api.fintech-primary.internal"
+          - "api.fintech-primary.fintech.internal"
+      controllerManager:
+        extraArgs:
+          cluster-signing-cert-file: "/etc/kubernetes/pki/ca.crt"
+          cluster-signing-key-file: "/etc/kubernetes/pki/ca.key"
+          leader-elect: "true"
+          leader-elect-lease-duration: "15s"
+          leader-elect-renew-deadline: "10s"
+          leader-elect-retry-period: "5s"
+          service-cluster-ip-range: "10.245.0.0/16"
+          pod-eviction-timeout: "30s"
+          terminated-pod-gc-threshold: "1000"
+      scheduler:
+        extraArgs:
+          leader-elect: "true"
+          leader-elect-lease-duration: "15s"
+          leader-elect-renew-deadline: "10s"
+          leader-elect-retry-period: "5s"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cgroup-driver: "systemd"
+          cgroups-per-qos: "true"
+          enforce-node-allocatable: "pods"
+          eviction-hard: "memory.available<100Mi,nodefs.available<5%,imagefs.available<5%"
+          eviction-soft: "memory.available<500Mi,nodefs.available<10%,imagefs.available<10%"
+          eviction-soft-grace-period: "memory.available=5m,nodefs.available=5m,imagefs.available=5m"
+          max-pods: "110"
+          kube-reserved: "cpu=200m,memory=1Gi,ephemeral-storage=1Gi"
+          system-reserved: "cpu=100m,memory=512Mi,ephemeral-storage=1Gi"
+          image-gc-high-threshold: "85"
+          image-gc-low-threshold: "80"
+      certificatesDir: "/etc/kubernetes/pki"
+      discovery:
+        timeout: "5m0s"
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cgroup-driver: "systemd"
+          cgroups-per-qos: "true"
+          enforce-node-allocatable: "pods"
+          max-pods: "110"
+      certificatesDir: "/etc/kubernetes/pki"
+      discovery:
+        timeout: "5m0s"
+  rolloutAfter: "2024-12-31T23:59:59Z"
+  strategy:
+    type: "RollingUpdate"
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AWSCluster
+metadata:
+  name: fintech-primary-us-east-1
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/cluster-name: fintech-primary-us-east-1
+  annotations:
+    infrastructure.fintech.internal/description: "Infraestructura AWS del cluster primario"
+    infrastructure.fintech.internal/vpc-cidr: "10.0.0.0/16"
+    infrastructure.fintech.internal/availability-zones: "us-east-1a,us-east-1b,us-east-1c"
+    infrastructure.fintech.internal/vpc-flow-logs: "enabled"
+    infrastructure.fintech.internal/nat-gateway: "enabled"
+    infrastructure.fintech.internal/load-balancer-type: "nlb"
+spec:
+  region: "us-east-1"
+  sshKeyName: "fintech-prod-ssh-key"
+  controlPlaneLoadBalancer:
+    scheme: "Internet-facing"
+    crossZoneLoadBalancingEnabled: true
+  networkSpec:
+    vpc:
+      cidrBlock: "10.0.0.0/16"
+      enableDnsHostnames: true
+      enableDnsSupport: true
+      flowLogs:
+        - destination: "CloudWatch"
+          filterType: "ALL"
+          logFormat: "json"
+          logRetention: "30"
+    subnets:
+      - cidrBlock: "10.0.1.0/24"
+        availabilityZone: "us-east-1a"
+        isPublic: true
+        natGatewayConfig:
+          enabled: true
+        tags:
+          cluster.fintech.internal/role: "public"
+          cluster.fintech.internal/subnet-type: "control-plane"
+      - cidrBlock: "10.0.2.0/24"
+        availabilityZone: "us-east-1b"
+        isPublic: true
+        natGatewayConfig:
+          enabled: true
+        tags:
+          cluster.fintech.internal/role: "public"
+          cluster.fintech.internal/subnet-type: "control-plane"
+      - cidrBlock: "10.0.3.0/24"
+        availabilityZone: "us-east-1c"
+        isPublic: true
+        natGatewayConfig:
+          enabled: true
+        tags:
+          cluster.fintech.internal/role: "public"
+          cluster.fintech.internal/subnet-type: "control-plane"
+      - cidrBlock: "10.0.10.0/24"
+        availabilityZone: "us-east-1a"
+        isPublic: false
+        tags:
+          cluster.fintech.internal/role: "private"
+          cluster.fintech.internal/subnet-type: "worker"
+      - cidrBlock: "10.0.11.0/24"
+        availabilityZone: "us-east-1b"
+        isPublic: false
+        tags:
+          cluster.fintech.internal/role: "private"
+          cluster.fintech.internal/subnet-type: "worker"
+      - cidrBlock: "10.0.12.0/24"
+        availabilityZone: "us-east-1c"
+        isPublic: false
+        tags:
+          cluster.fintech.internal/role: "private"
+          cluster.fintech.internal/subnet-type: "worker"
+  bastion:
+    enabled: true
+    allowedCIDRBlocks:
+      - "10.0.0.0/8"
+    instanceType: "t3.small"
+  ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fintech-primary-api-server
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/cluster-name: fintech-primary-us-east-1
+  annotations:
+    service.fintech.internal/type: "NLB"
+    service.fintech.internal/health-check-path: "/healthz"
+    service.fintech.internal/health-check-interval: "30s"
+    service.fintech.internal/healthy-threshold: "3"
+    service.fintech.internal/unhealthy-threshold: "3"
+    service.fintech.internal/timeout: "10s"
+spec:
+  type: LoadBalancer
+  selector:
+    component: etcd
+  ports:
+    - name: etcd-client
+      port: 2379
+      targetPort: 2379
+      protocol: TCP
+    - name: etcd-peer
+      port: 2380
+      targetPort: 2380
+      protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-health-config
+  namespace: fleet-management
+  labels:
+    cluster.fintech.internal/cluster-name: fintech-primary-us-east-1
+data:
+  health-check-config.yaml: |
+    healthChecks:
+      - name: etcd-health
+        type: http
+        endpoint: https://localhost:2379/health
+        interval: 30s
+        timeout: 10s
+        enabled: true
+      - name: api-server-health
+        type: http
+        endpoint: https://localhost:6443/healthz
+        interval: 30s
+        timeout: 10s
+        enabled: true
+      - name: controller-manager-health
+        type: http
+        endpoint: https://localhost:10257/healthz
+        interval: 30s
+        timeout: 10s
+        enabled: true
+      - name: scheduler-health
+        type: http
+        endpoint: https://localhost:10251/healthz
+        interval: 30s
+        timeout: 10s
+        enabled: true
+      - name: kubelet-health
+        type: http
+        endpoint: https://localhost:10248/healthz
+        interval: 30s
+        timeout: 10s
+        enabled: true
+  metrics-config.yaml: |
+    metrics:
+      - name: etcd-db-size
+        type: gauge
+        help: "Size of etcd database in bytes"
+        scrapeInterval: 15s
+      - name: api-request-latency
+        type: histogram
+        help: "API server request latency in seconds"
+        buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
+        scrapeInterval: 15s
+      - name: cluster-node-count
+        type: gauge
+        help: "Number of nodes in the cluster"
+        scrapeInterval: 30s
+      - name: cluster-pod-count
+        type: gauge
+        help: "Number of pods in the cluster"
+        scrapeInterval: 30s

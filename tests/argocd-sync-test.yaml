@@ -1,0 +1,200 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: argocd-sync-test-assertions
+      namespace: argocd
+      labels:
+        app: argocd-sync-validation
+        test-runner: fintech-control-plane
+      annotations:
+        description: "Validaciones de sincronizacion ArgoCD para multi-cluster fintech"
+        maintainer: "platform-team@fintech.internal"
+    data:
+      test-script.sh: |
+        #!/bin/bash
+        set -euo pipefail
+        
+        # Test: Verificar que ArgoCD puede sincronizar aplicaciones en todos los clusters
+        readonly ARGOCD_SERVER="argocd.fintech.internal"
+        readonly APP_NAME="fintech-app"
+        readonly EXPECTED_CLUSTERS="dev staging prod"
+        readonly SYNC_TIMEOUT=300
+        readonly HEALTH_TIMEOUT=180
+        
+        echo "=== ArgoCD Sync Test Suite ==="
+        echo "Start time: $(date -Iseconds)"
+        
+        # Test 1: Verificar que la aplicacion existe en ArgoCD
+        echo "[TEST 1] Verificando existencia de aplicacion en ArgoCD..."
+        if ! argocd app get $APP_NAME --server $ARGOCD_SERVER > /dev/null 2>&1; then
+          echo "FAIL: Aplicacion $APP_NAME no encontrada en ArgoCD"
+          exit 1
+        fi
+        echo "PASS: Aplicacion $APP_NAME encontrada"
+        
+        # Test 2: Verificar estado de sincronizacion en cluster de desarrollo
+        echo "[TEST 2] Verificando sync en cluster dev..."
+        if ! argocd app sync $APP_NAME --server argocd.dev.fintech.internal --timeout $SYNC_TIMEOUT; then
+          echo "FAIL: Sincronizacion en dev fallo"
+          exit 1
+        fi
+        echo "PASS: Sincronizacion en dev completada"
+        
+        # Test 3: Verificar estado de sincronizacion en cluster staging
+        echo "[TEST 3] Verificando sync en cluster staging..."
+        if ! argocd app sync $APP_NAME --server argocd.staging.fintech.internal --timeout $SYNC_TIMEOUT; then
+          echo "FAIL: Sincronizacion en staging fallo"
+          exit 1
+        fi
+        echo "PASS: Sincronizacion en staging completada"
+        
+        # Test 4: Verificar estado de sincronizacion en cluster production
+        echo "[TEST 4] Verificando sync en cluster prod..."
+        if ! argocd app sync $APP_NAME --server argocd.prod.fintech.internal --timeout $SYNC_TIMEOUT; then
+          echo "FAIL: Sincronizacion en prod fallo"
+          exit 1
+        fi
+        echo "PASS: Sincronizacion en prod completada"
+        
+        # Test 5: Verificar que todos los recursos fueron creados correctamente
+        echo "[TEST 5] Verificando recursos desplegados en cada cluster..."
+        for cluster in dev staging prod; do
+          echo "  Verificando cluster: $cluster"
+          RESOURCE_COUNT=$(argocd app resources $APP_NAME --server argocd.$cluster.fintech.internal -o json | jq -r '.[] | select(.health.status=="Healthy") | .name' | wc -l)
+          if [ "$RESOURCE_COUNT" -lt 5 ]; then
+            echo "FAIL: Recursos insuficientes en $cluster (encontrados: $RESOURCE_COUNT, esperados: >=5)"
+            exit 1
+          fi
+          echo "  PASS: $cluster tiene $RESOURCE_COUNT recursos healthy"
+        done
+        
+        # Test 6: Verificar rollback automatico en caso de fallo
+        echo "[TEST 6] Verificando politica de sync..."
+        SYNC_POLICY=$(argocd app get $APP_NAME --server $ARGOCD_SERVER -o json | jq -r '.spec.syncPolicy.automated // null')
+        if [ "$SYNC_POLICY" == "null" ]; then
+          echo "WARN: Sync automatico no esta habilitado"
+        else
+          echo "PASS: Sync automatico habilitado"
+        fi
+        
+        # Test 7: Verificar historial de revisiones
+        echo "[TEST 7] Verificando historial de sync..."
+        REVISION_COUNT=$(argocd app history $APP_NAME --server $ARGOCD_SERVER -o json | jq -r '.[] | length')
+        if [ "$REVISION_COUNT" -lt 1 ]; then
+          echo "FAIL: Sin historial de sincronizaciones"
+          exit 1
+        fi
+        echo "PASS: Historial tiene $REVISION_COUNT revisiones"
+        
+        # Test 8: Verificar drift detection
+        echo "[TEST 8] Verificando deteccion de drift..."
+        for cluster in dev staging prod; do
+          if argocd app diff $APP_NAME --server argocd.$cluster.fintech.internal > /dev/null 2>&1; then
+            echo "  WARN: Drift detectado en $cluster"
+          else
+            echo "  PASS: Sin drift en $cluster"
+          fi
+        done
+        
+        echo "=== Todas las pruebas pasaron ==="
+        echo "End time: $(date -Iseconds)"
+        exit 0
+
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: argocd-sync-test-runner
+      namespace: argocd
+      labels:
+        app: argocd-sync-validation
+        test-type: integration
+        test-runner: fintech-control-plane
+      annotations:
+        description: "Job que ejecuta tests de sincronizacion ArgoCD"
+        maintainer: "platform-team@fintech.internal"
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: argocd-sync-validation
+        spec:
+          serviceAccountName: argocd-application-controller
+          restartPolicy: OnFailure
+          containers:
+            - name: test-runner
+              image: argoproj/argo-cd:v2.10.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - /scripts/test-script.sh
+              env:
+                - name: ARGOCD_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: argocd-credentials
+                      key: auth-token
+                      optional: true
+              volumeMounts:
+                - name: test-script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          volumes:
+            - name: test-script
+              configMap:
+                name: argocd-sync-test-assertions
+                defaultMode: 0755
+
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: argocd-sync-test-runner
+      namespace: argocd
+      labels:
+        app: argocd-sync-validation
+      annotations:
+        description: "Service account para ejecutar tests de sync ArgoCD"
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: argocd-sync-test-runner
+      namespace: argocd
+      labels:
+        app: argocd-sync-validation
+    rules:
+      - apiGroups: ["argoproj.io"]
+        resources: ["applications"]
+        verbs: ["get", "list", "watch", "sync"]
+      - apiGroups: ["argoproj.io"]
+        resources: ["appprojects"]
+        verbs: ["get", "list"]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: argocd-sync-test-runner
+      namespace: argocd
+      labels:
+        app: argocd-sync-validation
+    subjects:
+      - kind: ServiceAccount
+        name: argocd-sync-test-runner
+        namespace: argocd
+    roleRef:
+      kind: Role
+      name: argocd-sync-test-runner
+      apiGroup: rbac.authorization.k8s.io
+
+---

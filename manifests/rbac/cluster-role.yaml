@@ -1,0 +1,391 @@
+# Definición de roles federados para gestión centralizada de permisos en entorno multi-cluster
+# Arquitectura: ClusterRole con agregación de etiquetas para permisos granulares
+# Clusters: primary (us-east-1), standby-1 (us-west-2), standby-2 (eu-west-1)
+#
+# Notas de diseño:
+# - Uso de aggregationRule para permitir extensión mediante ClusterRole con etiquetas matching
+# - Separación de permisos por componente del sistema
+# - Principio de menor privilegio aplicado
+# - Soporte para disaster recovery con permisos de failover
+
+---
+# ClusterRole base para lectores del sistema (todos los componentes)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-readonly
+  annotations:
+    description: "Rol base de solo lectura para usuarios y servicios de monitoreo"
+    rbac.fintech.internal/aggregation: "readonly"
+    audit.fintech.internal/loggable: "true"
+spec:
+  aggregationRule:
+    clusterRoleSelectors:
+      - matchLabels:
+          rbac.fintech.internal/aggregate-to-readonly: "true"
+  rules: []
+---
+# ClusterRole para administradores de ArgoCD
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-argocd-admin
+  annotations:
+    description: "Administración completa de ArgoCD y aplicaciones GitOps"
+    component: "argocd"
+    rbac.fintech.internal/aggregation: "argocd"
+    audit.fintech.internal/loggable: "true"
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - applications
+      - applicationsets
+      - appprojects
+      - applicationsets/finalizers
+      - applications/finalizers
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - secrets
+      - services
+      - pods
+      - pods/log
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "update", "patch"]
+  
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list"]
+  
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - rolebindings
+      - roles
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# ClusterRole para administradores de Crossplane
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-crossplane-admin
+  annotations:
+    description: "Administración de recursos aprovisionados por Crossplane"
+    component: "crossplane"
+    rbac.fintech.internal/aggregation: "crossplane"
+    audit.fintech.internal/loggable: "true"
+rules:
+  - apiGroups: ["apiextensions.crossplane.io"]
+    resources: ["compositions", "compositions/finalizers", "compositeresourcedefinitions", "compositeresourcedefinitions/finalizers"]
+    verbs: ["*"]
+  
+  - apiGroups: ["pkg.crossplane.io"]
+    resources: ["providerrevisions", "configurationrevisions", "providers", "configurations"]
+    verbs: ["*"]
+  
+  - apiGroups: ["crossplane.io"]
+    resources:
+      - compositemissingresources
+      - compositeresources
+      - claims
+      - xrdetails
+      - usagemissingresources
+      - usages
+    verbs: ["*"]
+  
+  - apiGroups: ["aws.fintech.internal"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  - apiGroups: ["aws.upbound.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - csidinodes
+      - csinodes
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingressclasses
+    verbs: ["get", "list", "watch"]
+---
+# ClusterRole para administradores de External Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-external-secrets-admin
+  annotations:
+    description: "Administración de External Secrets Operator y sincronización de Vault"
+    component: "external-secrets"
+    rbac.fintech.internal/aggregation: "external-secrets"
+    audit.fintech.internal/loggable: "true"
+rules:
+  - apiGroups: ["external-secrets.io"]
+    resources:
+      - clustersecretstores
+      - secretstores
+      - externalsecrets
+      - externalsecrets/finalizers
+      - externalsecrets/status
+      - pushsecrets
+      - pushsecrets/finalizers
+      - pushsecrets/status
+      - generatesecrets
+      - clustergeneratesecrets
+      - acmecertificates
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - configmaps
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources:
+      - serviceaccounts
+      - serviceaccounts/token
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - tokenreviews
+    verbs: ["create"]
+  
+  - apiGroups: ["authorization.k8s.io"]
+    resources:
+      - subjectaccessreviews
+    verbs: ["create"]
+---
+# ClusterRole para controladores de Disaster Recovery
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-disaster-recovery-admin
+  annotations:
+    description: "Permisos para lógica de failover y recuperación ante desastres"
+    component: "disaster-recovery"
+    rbac.fintech.internal/aggregation: "disaster-recovery"
+    audit.fintech.internal/loggable: "true"
+    criticality: "high"
+rules:
+  - apiGroups: ["disaster-recovery.fintech.internal"]
+    resources:
+      - failoverplans
+      - failoverplans/finalizers
+      - failoverplans/status
+      - failoverexecutions
+      - failoverexecutions/finalizers
+      - failoverexecutions/status
+      - clusterhealths
+      - clusterhealths/status
+    verbs: ["*"]
+  
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - applications
+      - applicationsets
+    verbs: ["get", "list", "watch", "update", "patch"]
+  
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+    verbs: ["get", "list", "watch", "update", "patch", "delete", "create"]
+  
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - replicasets
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - services
+    verbs: ["get", "list", "watch", "update", "patch", "delete", "create"]
+  
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterrolebindings
+      - clusterroles
+    verbs: ["get", "list", "watch", "update", "patch"]
+  
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+# ClusterRole para operadores de infraestructura
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-infrastructure-operator
+  annotations:
+    description: "Permisos para gestión de infraestructura base (networking, storage, DNS)"
+    component: "infrastructure"
+    rbac.fintech.internal/aggregation: "infrastructure"
+    audit.fintech.internal/loggable: "true"
+rules:
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+      - ingressclasses
+      - ingresses
+    verbs: ["*"]
+  
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - services
+    verbs: ["*"]
+  
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - csidrivers
+      - csinodes
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources:
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs: ["*"]
+  
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["*"]
+---
+# ClusterRole para métricas y monitoreo
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-metrics-reader
+  annotations:
+    description: "Acceso de lectura a métricas del cluster para Prometheus y Grafana"
+    component: "monitoring"
+    rbac.fintech.internal/aggregation: "monitoring"
+    audit.fintech.internal/loggable: "false"
+rules:
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - pods/log
+      - nodes
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - nodes
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+---
+# ClusterRole para acceso a etcd (requerido para backup/restore)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fintech-etcd-operator
+  annotations:
+    description: "Operaciones de backup y restore de etcd"
+    component: "etcd"
+    rbac.fintech.internal/aggregation: "etcd"
+    audit.fintech.internal/loggable: "true"
+    criticality: "critical"
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+    verbs: ["create"]
+  
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch", "create"]
+  
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch", "create", "update", "patch"]

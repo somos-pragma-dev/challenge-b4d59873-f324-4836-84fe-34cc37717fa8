@@ -1,0 +1,240 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: crossplane-provisioning-test-assertions
+      namespace: crossplane-system
+      labels:
+        app: crossplane-provisioning-validation
+        test-runner: fintech-control-plane
+      annotations:
+        description: "Validaciones de provisionamiento Crossplane para infraestructura fintech"
+        maintainer: "platform-team@fintech.internal"
+    data:
+      test-script.sh: |
+        #!/bin/bash
+        set -euo pipefail
+        
+        # Test: Verificar provisionamiento de infraestructura con Crossplane
+        readonly CROSSPLANE_NAMESPACE="crossplane-system"
+        readonly PROVIDER_AWS="provider-aws"
+        readonly PROVIDER_HELM="provider-helm"
+        readonly COMPOSITION_NAME="fintech-aws-network"
+        readonly XRD_NAME="xnetworkfintech"
+        readonly CLAIM_TIMEOUT=300
+        
+        echo "=== Crossplane Provisioning Test Suite ==="
+        echo "Start time: $(date -Iseconds)"
+        
+        # Test 1: Verificar que los providers de Crossplane esten instalados y healthy
+        echo "[TEST 1] Verificando providers de Crossplane..."
+        kubectl get providers -n $CROSSPLANE_NAMESPACE
+        
+        PROVIDER_AWS_STATUS=$(kubectl get provider $PROVIDER_AWS -n $CROSSPLANE_NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Healthy")].status}' 2>/dev/null || echo "NotFound")
+        if [ "$PROVIDER_AWS_STATUS" != "True" ]; then
+          echo "FAIL: Provider AWS no esta healthy"
+          exit 1
+        fi
+        echo "PASS: Provider AWS esta healthy"
+        
+        PROVIDER_HELM_STATUS=$(kubectl get provider $PROVIDER_HELM -n $CROSSPLANE_NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Healthy")].status}' 2>/dev/null || echo "NotFound")
+        if [ "$PROVIDER_HELM_STATUS" != "True" ]; then
+          echo "FAIL: Provider Helm no esta healthy"
+          exit 1
+        fi
+        echo "PASS: Provider Helm esta healthy"
+        
+        # Test 2: Verificar que las composiciones esten registradas
+        echo "[TEST 2] Verificando Compositions registradas..."
+        kubectl get compositions
+        
+        if ! kubectl get composition $COMPOSITION_NAME -n $CROSSPLANE_NAMESPACE > /dev/null 2>&1; then
+          echo "FAIL: Composition $COMPOSITION_NAME no encontrada"
+          exit 1
+        fi
+        echo "PASS: Composition $COMPOSITION_NAME encontrada"
+        
+        # Test 3: Verificar que los CompositeResourceDefinitions (XRD) esten registrados
+        echo "[TEST 3] Verificando CompositeResourceDefinitions..."
+        kubectl get compositeresourcedefinitions
+        
+        if ! kubectl get compositeresourcedefinition $XRD_NAME -n $CROSSPLANE_NAMESPACE > /dev/null 2>&1; then
+          echo "FAIL: XRD $XRD_NAME no encontrada"
+          exit 1
+        fi
+        echo "PASS: XRD $XRD_NAME encontrada"
+        
+        # Test 4: Crear un recurso compuesto y verificar provisionamiento
+        echo "[TEST 4] Verificando provisionamiento de recurso compuesto..."
+        cat <<EOF | kubectl apply -f -
+apiVersion: network.fintech.internal/v1alpha1
+kind: Network
+metadata:
+  name: test-network-provisioning
+  namespace: default
+spec:
+  region: us-east-1
+  vpcCidr: "10.0.0.0/16"
+  availabilityZones:
+    - us-east-1a
+    - us-east-1b
+    - us-east-1c
+  tags:
+    environment: test
+    managed-by: crossplane
+    project: fintech-control-plane
+  compositionSelector:
+    matchLabels:
+      provider: aws
+      type: network
+EOF
+        
+        # Esperar a que el recurso se aprovisione
+        echo "Esperando provisionamiento (timeout: ${CLAIM_TIMEOUT}s)..."
+        if ! kubectl wait --for=condition=Ready network/test-network-provisioning --timeout=${CLAIM_TIMEOUT}s 2>/dev/null; then
+          echo "FAIL: Timeout esperando provisionamiento del recurso"
+          kubectl get network test-network-provisioning -o yaml
+          exit 1
+        fi
+        echo "PASS: Recurso aprovisionado exitosamente"
+        
+        # Test 5: Verificar que los recursos de AWS fueron creados
+        echo "[TEST 5] Verificando recursos de AWS creados..."
+        VPC_ID=$(kubectl get network test-network-provisioning -o jsonpath='{.status.vpcId}')
+        if [ -z "$VPC_ID" ]; then
+          echo "FAIL: VPC ID no generado"
+          exit 1
+        fi
+        echo "PASS: VPC $VPC_ID creada"
+        
+        SUBNET_COUNT=$(kubectl get network test-network-provisioning -o jsonpath='{.status.subnetIds}' | jq 'length')
+        if [ "$SUBNET_COUNT" -lt 3 ]; then
+          echo "FAIL: Subnets insuficientes (esperadas: 3, encontradas: $SUBNET_COUNT)"
+          exit 1
+        fi
+        echo "PASS: $SUBNET_COUNT subnets creadas"
+        
+        # Test 6: Verificar estado de los managed resources
+        echo "[TEST 6] Verificando Managed Resources..."
+        kubectl get managed
+        
+        # Test 7: Verificar resolucion de referencias entre recursos
+        echo "[TEST 7] Verificando referencias entre recursos..."
+        SECURITY_GROUP_ID=$(kubectl get network test-network-provisioning -o jsonpath='{.status.securityGroupIds[0]}')
+        if [ -z "$SECURITY_GROUP_ID" ]; then
+          echo "FAIL: Security Group no creado"
+          exit 1
+        fi
+        echo "PASS: Security Group $SECURITY_GROUP_ID creado"
+        
+        # Test 8: Limpieza del recurso de prueba
+        echo "[TEST 8] Limpiando recurso de prueba..."
+        kubectl delete network test-network-provisioning --wait=true --timeout=120s
+        echo "PASS: Recurso limpiado"
+        
+        echo "=== Todas las pruebas pasaron ==="
+        echo "End time: $(date -Iseconds)"
+        exit 0
+
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: crossplane-provisioning-test-runner
+      namespace: crossplane-system
+      labels:
+        app: crossplane-provisioning-validation
+        test-type: integration
+        test-runner: fintech-control-plane
+      annotations:
+        description: "Job que ejecuta tests de provisionamiento Crossplane"
+        maintainer: "platform-team@fintech.internal"
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: crossplane-provisioning-validation
+        spec:
+          serviceAccountName: crossplane-provider-aws
+          restartPolicy: OnFailure
+          containers:
+            - name: test-runner
+              image: crossplane/provider-aws:v1.14.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - /scripts/test-script.sh
+              env:
+                - name: AWS_REGION
+                  value: "us-east-1"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-provider-creds
+                      key: credentials
+                      optional: true
+              volumeMounts:
+                - name: test-script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "1000m"
+          volumes:
+            - name: test-script
+              configMap:
+                name: crossplane-provisioning-test-assertions
+                defaultMode: 0755
+
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: crossplane-provisioning-test-runner
+      namespace: crossplane-system
+      labels:
+        app: crossplane-provisioning-validation
+      annotations:
+        description: "Service account para ejecutar tests de provisioning Crossplane"
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: crossplane-provisioning-test-runner
+      namespace: crossplane-system
+      labels:
+        app: crossplane-provisioning-validation
+    rules:
+      - apiGroups: ["*"]
+        resources: ["*"]
+        verbs: ["get", "list", "watch", "create", "update", "delete"]
+      - apiGroups: ["apiextensions.k8s.io"]
+        resources: ["compositeresourcedefinitions", "compositions"]
+        verbs: ["get", "list"]
+      - apiGroups: ["network.fintech.internal"]
+        resources: ["networks"]
+        verbs: ["*"]
+
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: crossplane-provisioning-test-runner
+      namespace: crossplane-system
+      labels:
+        app: crossplane-provisioning-validation
+    subjects:
+      - kind: ServiceAccount
+        name: crossplane-provisioning-test-runner
+        namespace: crossplane-system
+    roleRef:
+      kind: Role
+      name: crossplane-provisioning-test-runner
+      apiGroup: rbac.authorization.k8s.io
+
+---

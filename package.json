@@ -1,0 +1,134 @@
+{
+  "name": "fintech-multi-cluster-control-plane",
+  "version": "1.0.0",
+  "description": "Control plane multi-cluster Kubernetes con GitOps, Crossplane y Disaster Recovery",
+  "main": "index.js",
+  "scripts": {
+    "validate:k8s": "kubectl apply --dry-run=client -f manifests/",
+    "validate:argocd": "argocd app validate manifests/argocd/application.yaml",
+    "sync:dev": "argocd app sync fintech-app --server argocd.dev.fintech.internal --auth-token $ARGOCD_TOKEN",
+    "sync:staging": "argocd app sync fintech-app --server argocd.staging.fintech.internal --auth-token $ARGOCD_TOKEN",
+    "sync:prod": "argocd app sync fintech-app --server argocd.prod.fintech.internal --auth-token $ARGOCD_TOKEN",
+    "sync:all": "npm run sync:dev && npm run sync:staging && npm run sync:prod",
+    "diff:dev": "argocd app diff fintech-app --server argocd.dev.fintech.internal",
+    "diff:staging": "argocd app diff fintech-app --server argocd.staging.fintech.internal",
+    "diff:prod": "argocd app diff fintech-app --server argocd.prod.fintech.internal",
+    "health:check": "kubectl get applications -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.health.status}{"\n"}{end}'",
+    "failover:primary": "kubectl apply -f manifests/disaster-recovery/failover-controller.yaml -n disaster-recovery",
+    "failover:rollback": "kubectl delete -f manifests/disaster-recovery/failover-controller.yaml -n disaster-recovery",
+    "vault:init": "vault operator init -key-shares=5 -key-threshold=3",
+    "vault:unseal": "vault operator unseal",
+    "crossplane:provision": "kubectl apply -f manifests/crossplane/compositions.yaml",
+    "crossplane:providers": "kubectl apply -f manifests/crossplane/providers.yaml",
+    "secrets:sync": "kubectl get secretstore -A -o json | jq -r '.items[] | select(.status.conditions[0].status==\"True\") | .metadata.name' | xargs -I {} kubectl apply -f manifests/external-secrets/secret-store.yaml -n external-secrets",
+    "rbac:apply": "kubectl apply -f manifests/rbac/cluster-role.yaml && kubectl apply -f manifests/rbac/role-binding.yaml",
+    "clusters:list": "kubectl get clusters -A -o wide",
+    "clusters:status": "kubectl get kubeadmconfig -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type==\"Ready\")].status}{"\n"}{end}'",
+    "etcd:backup": "etcdctl snapshot save /backups/etcd-$(date +%Y%m%d-%H%M%S).db --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key",
+    "etcd:restore": "etcdctl snapshot restore /backups/etcd-latest.db --data-dir=/var/lib/etcd",
+    "test:argocd-sync": "kubectl apply -f tests/argocd-sync-test.yaml",
+    "test:crossplane": "kubectl apply -f tests/crossplane-provisioning-test.yaml",
+    "test:vault-secrets": "kubectl apply -f tests/vault-secrets-test.yaml",
+    "docs:generate": "npm run docs:topologia && npm run docs:gitops && npm run docs:rbac && npm run docs:secrets && npm run docs:dr",
+    "docs:topologia": "echo '# Topologia de Replicacion de Estado' > docs/topologia-replicacion-estado.md",
+    "docs:gitops": "echo '# Comparativa GitOps' > docs/comparativa-gitops-herramientas.md",
+    "docs:rbac": "echo '# Modelo RBAC Federado' > docs/modelo-rbac-federado.md",
+    "docs:secrets": "echo '# Estrategia de Secrets' > docs/estrategia-secrets.md",
+    "docs:dr": "echo '# Coreografia Disaster Recovery' > docs/coreografia-disaster-recovery.md",
+    "aws:iam-validate": "aws iam get-policy --policy-arn arn:aws:iam::$(aws sts get-caller-identity --query 'Account' --output text):policy/FintechMultiClusterPolicy",
+    "aws:health-check": "kubectl apply -f aws/health-check-listener.yaml",
+    "lint:yaml": "yamllint -c .yamllint.yml manifests/ manifests/apps manifests/disaster-recovery manifests/rbac manifests/crossplane manifests/vault manifests/external-secrets",
+    "lint:helm": "helm lint charts/ --values charts/values.yaml",
+    "format:yaml": "prettier --write 'manifests/**/*.yaml' 'manifests/**/*.yml'",
+    "prettier:check": "prettier --check 'manifests/**/*.yaml' 'manifests/**/*.yml'",
+    "security:scan": "trivy fs --security-checks vuln,config manifests/",
+    "security:scan:images": "trivy image --severity HIGH,CRITICAL $(kubectl get pods -A -o jsonpath='{range .items[*]}{.spec.containers[*].image}{"\n"}{end}' | sort -u)",
+    "audit:argocd": "argocd app history fintech-app --output wide",
+    "audit:rbac": "kubectl auth can --list --as=system:serviceaccount:default:default",
+    "backup:all": "kubectl get all -A -o yaml > /backups/full-manifest-$(date +%Y%m%d-%H%M%S).yaml && kubectl get crd -o yaml >> /backups/full-manifest-$(date +%Y%m%d-%H%M%S).yaml",
+    "restore:manifest": "kubectl apply -f /backups/full-manifest-latest.yaml",
+    "metrics:argocd": "argocd app metrics fintech-app",
+    "metrics:cluster": "kubectl top nodes && kubectl top pods -A",
+    "grafana:import": "curl -X POST http://grafana.fintech.internal/api/dashboards/import -H 'Content-Type: application/json' -d @dashboards/multi-cluster-dashboard.json",
+    "alert:configure": "kubectl apply -f manifests/monitoring/alert-rules.yaml",
+    "cleanup:orphaned": "kubectl get pv | grep -v Bound | awk '{print $1}' | xargs -r kubectl delete pv",
+    "cleanup:completed": "kubectl delete jobs -A --field-selector=status.successful=1"
+  },
+  "keywords": [
+    "kubernetes",
+    "argocd",
+    "gitops",
+    "crossplane",
+    "vault",
+    "multi-cluster",
+    "disaster-recovery",
+    "fintech",
+    "aws",
+    "infrastructure-as-code"
+  ],
+  "author": "Fintech Architecture Team",
+  "license": "proprietary",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fintech/multi-cluster-control-plane"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/jest": "^29.5.0",
+    "typescript": "^5.3.0",
+    "prettier": "^3.1.0",
+    "yamllint": "^1.33.0",
+    "trivy": "^0.48.0",
+    "helm": "^3.13.0",
+    "kubectl": "^1.28.0",
+    "argocd": "^2.10.0",
+    "awscli": "^2.14.0",
+    "jq": "^1.7.0"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "kubernetes-client": "^1.8.0",
+    "@kubernetes/client-node": "^0.20.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0"
+  },
+  "peerDependencies": {
+    "kubectl": "^1.28.0",
+    "helm": "^3.13.0",
+    "argocd": "^2.10.0"
+  },
+  "optionalDependencies": {
+    "vault": "^1.15.0",
+    "aws-iam-authenticator": "^0.6.0"
+  },
+  "peerDependenciesMeta": {
+    "vault": {
+      "optional": true
+    },
+    "aws-iam-authenticator": {
+      "optional": true
+    }
+  },
+  "bundleDependencies": [],
+  "overrides": {
+    "js-yaml": "^4.1.0",
+    "axios": "^1.6.0"
+  },
+  "resolutions": {
+    "glob": "^10.3.0",
+    "minimatch": "^9.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.fintech.internal",
+    "access": "restricted"
+  },
+  "sideEffects": false,
+  "funding": {
+    "type": "individual",
+    "url": "https://fintech.internal/funding"
+  }
+}

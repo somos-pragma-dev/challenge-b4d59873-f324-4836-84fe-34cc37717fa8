@@ -1,0 +1,347 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anti-split-brain-config
+  namespace: disaster-recovery
+  annotations:
+    description: "Configuración del mecanismo de quorum para evitar split-brain"
+    documentation: "https://fintech.internal/docs/anti-split-brain"
+data:
+  quorum-config.yaml: |
+    quorum:
+      algorithm: raft
+      clusterSize: 3
+      quorumSize: 2
+      heartbeatInterval: 1s
+      electionTimeout: 5s
+      maxLogEntries: 1000
+      
+    etcd:
+      endpoints:
+        - https://etcd-0.fintech.internal:2379
+        - https://etcd-1.fintech.internal:2379
+        - https://etcd-2.fintech.internal:2379
+      autoCompactionMode: periodic
+      autoCompactionRetention: 1h
+      quotaBackendBytes: 8589934592
+      
+    fencing:
+      enabled: true
+      fencingTimeout: 10s
+      releaseTimeout: 30s
+      maxFenceRetries: 3
+      
+    splitBrainDetection:
+      enabled: true
+      checkInterval: 5s
+      alertThreshold: 2
+      autoHealEnabled: true
+    
+    logging:
+      level: info
+      format: json
+      output: stdout
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: etcd-anti-split-brain-tls
+  namespace: disaster-recovery
+type: Opaque
+data:
+  # Certificados TLS para comunicación segura del cluster etcd
+  # Base64 encoded - reemplazar con valores reales en producción
+  etcd-ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  etcd-peer.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  etcd-peer.key: LS0tLS1CRUdJTiBDUktQVEFEQVFBLS0tLS0tCk1JSUVBUU1Fd0RRWUo3SUNBZ0VDQXdnZ0lFaDBWR0F3SGhjTk1qTXdNVEF4TURBd01EQXdXaGNOTWpNd01UQXhNREF3TURBdwpXakFlTVJ3d0dnWURWUVFEREJOaGNIQXVaWGhoYlhCc1pTNWpiMjBnTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJCnpqMERBUWNEUWdBRXBsYWNlSG9sZGVyQ2VydGlmaWNhdGVEYXRhS2V5R2VuZXJhdGVkS2V5
+  etcd-server.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  etcd-server.key: LS0tLS1CRUdJTiBDUktQVEFEQVFBLS0tLS0tCk1JSUVBUU1Fd0RRWUo3SUNBZ0VDQXdnZ0lFaDBWR0F3SGhjTk1qTXdNVEF4TURBd01EQXdXaGNOTWpNd01UQXhNREF3TURBdwpXakFlTVJ3d0dnWURWUVFEREJOaGNIQXVaWGhoYlhCc1pTNWpiMjBnTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJCnpqMERBUWNEUWdBRXBsYWNlSG9sZGVyQ2VydGlmaWNhdGVEYXRhS2V5R2VuZXJhdGVkS2V5
+  etcd-client.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJZGVtb3JkZXIgQ0VSVElGSUNBVEUtLS0tLQo=
+  etcd-client.key: LS0tLS1CRUdJTiBDUktQVEFEQVFBLS0tLS0tCk1JSUVBUU1Fd0RRWUo3SUNBZ0VDQXdnZ0lFaDBWR0F3SGhjTk1qTXdNVEF4TURBd01EQXdXaGNOTWpNd01UQXhNREF3TURBdwpXakFlTVJ3d0dnWURWUVFEREJOaGNIQXVaWGhoYlhCc1pTNWpiMjBnTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJCnpqMERBUWNEUWdBRXBsYWNlSG9sZGVyQ2VydGlmaWNhdGVEYXRhS2V5R2VuZXJhdGVkS2V5
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: anti-split-brain-etcd
+  namespace: disaster-recovery
+  labels:
+    app: anti-split-brain-etcd
+    component: quorum
+    etcd: "true"
+  annotations:
+    description: "Cluster etcd para implementar mecanismo de quorum y evitar split-brain"
+    owner: "sre-team@fintech.internal"
+spec:
+  serviceName: etcd-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: anti-split-brain-etcd
+  template:
+    metadata:
+      labels:
+        app: anti-split-brain-etcd
+        etcd: "true"
+    spec:
+      serviceAccountName: etcd
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: etcd
+          image: gcr.io/etcd-development/etcd:v3.5.12
+          imagePullPolicy: IfNotPresent
+          command:
+            - /etc/etcd/etcd.conf.yaml
+          env:
+            - name: ETCD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ETCD_INITIAL_CLUSTER_STATE
+              value: "new"
+            - name: ETCD_INITIAL_CLUSTER_TOKEN
+              value: "fintech-dr-quorum"
+            - name: ETCD_AUTO_COMPACTION_MODE
+              value: "periodic"
+            - name: ETCD_AUTO_COMPACTION_RETENTION
+              value: "1h"
+            - name: ETCD_QUOTA_BACKEND_BYTES
+              value: "8589934592"
+          ports:
+            - containerPort: 2379
+              name: client
+            - containerPort: 2380
+              name: peer
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: etcd-data
+              mountPath: /var/lib/etcd
+            - name: etcd-config
+              mountPath: /etc/etcd
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/etcd/tls/ca.crt --cert=/etc/etcd/tls/server.crt --key=/etc/etcd/tls/server.key endpoint health
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/etcd/tls/ca.crt --cert=/etc/etcd/tls/server.crt --key=/etc/etcd/tls/server.key endpoint health
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: etcd-data
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: etcd-config
+          configMap:
+            name: etcd-configmap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-headless
+  namespace: disaster-recovery
+  labels:
+    app: anti-split-brain-etcd
+spec:
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+    - name: peer
+      port: 2380
+      targetPort: 2380
+  clusterIP: None
+  selector:
+    app: anti-split-brain-etcd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-client
+  namespace: disaster-recovery
+  labels:
+    app: anti-split-brain-etcd
+spec:
+  ports:
+    - name: client
+      port: 2379
+      targetPort: 2379
+  selector:
+    app: anti-split-brain-etcd
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: etcd
+  namespace: disaster-recovery
+  annotations:
+    description: "ServiceAccount para el cluster etcd del quorum"
+    owner: "sre-team@fintech.internal"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anti-split-brain-controller
+  namespace: disaster-recovery
+  labels:
+    app: anti-split-brain-controller
+    component: quorum-manager
+  annotations:
+    description: "Controller que monitorea el quorum y ejecuta acciones de fencing"
+    owner: "sre-team@fintech.internal"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: anti-split-brain-controller
+  template:
+    metadata:
+      labels:
+        app: anti-split-brain-controller
+        component: quorum-manager
+    spec:
+      serviceAccountName: anti-split-brain-controller
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: anti-split-brain-controller
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: controller
+          image: fintech.azurecr.io/anti-split-brain-controller:v1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: metrics
+            - containerPort: 9090
+              name: webhook
+          env:
+            - name: ETCD_ENDPOINTS
+              value: "https://etcd-0.fintech.internal:2379,https://etcd-1.fintech.internal:2379,https://etcd-2.fintech.internal:2379"
+            - name: ETCD_CA_PATH
+              value: /etc/etcd/tls/ca.crt
+            - name: ETCD_CERT_PATH
+              value: /etc/etcd/tls/client.crt
+            - name: ETCD_KEY_PATH
+              value: /etc/etcd/tls/client.key
+            - name: QUORUM_CHECK_INTERVAL
+              value: "5s"
+            - name: FENCING_ENABLED
+              value: "true"
+            - name: FENCING_TIMEOUT
+              value: "10s"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: etcd-tls
+              mountPath: /etc/etcd/tls
+              readOnly: true
+            - name: config
+              mountPath: /config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: etcd-tls
+          secret:
+            secretName: etcd-anti-split-brain-tls
+        - name: config
+          configMap:
+            name: anti-split-brain-config
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: anti-split-brain-controller
+  namespace: disaster-recovery
+  annotations:
+    description: "ServiceAccount para el controller anti-split-brain"
+    owner: "sre-team@fintech.internal"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: anti-split-brain-pdb
+  namespace: disaster-recovery
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: anti-split-brain-controller
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-configmap
+  namespace: disaster-recovery
+data:
+  etcd.conf.yaml: |
+    name: ${ETCD_NAME}
+    data-dir: /var/lib/etcd
+    listen-peer-urls: https://0.0.0.0:2380
+    listen-client-urls: https://0.0.0.0:2379
+    initial-cluster: etcd-0=https://etcd-0.fintech.internal:2380,etcd-1=https://etcd-1.fintech.internal:2380,etcd-2=https://etcd-2.fintech.internal:2380
+    initial-cluster-state: new
+    initial-cluster-token: fintech-dr-quorum
+    client-transport-security:
+      cert-file: /etc/etcd/tls/server.crt
+      key-file: /etc/etcd/tls/server.key
+      client-cert-auth: true
+      trusted-ca-file: /etc/etcd/tls/ca.crt
+    peer-transport-security:
+      cert-file: /etc/etcd/tls/peer.crt
+      key-file: /etc/etcd/tls/peer.key
+      peer-client-cert-auth: true
+      trusted-ca-file: /etc/etcd/tls/ca.crt
+    election-timeout: 5000
+    heartbeat-interval: 1000

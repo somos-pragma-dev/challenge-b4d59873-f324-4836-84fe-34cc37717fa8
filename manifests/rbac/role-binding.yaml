@@ -1,0 +1,239 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fintech-admin-cluster-binding
+  annotations:
+    description: "Asignación de rol de administrador cluster-wide para el equipo de platform engineering"
+    owner: "platform-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fintech-admin-cluster-role
+subjects:
+  - kind: Group
+    name: platform-engineers
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: sre-team
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+  - kind: User
+    name: juan.perez@fintech.internal
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fintech-devops-cluster-binding
+  annotations:
+    description: "Asignación de rol de DevOps para gestión de deployments"
+    owner: "devops-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fintech-devops-cluster-role
+subjects:
+  - kind: Group
+    name: devops-engineers
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: argocd-server
+    namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fintech-viewer-cluster-binding
+  annotations:
+    description: "Asignación de rol de solo lectura cluster-wide para auditores"
+    owner: "security-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fintech-viewer-cluster-role
+subjects:
+  - kind: Group
+    name: auditors
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: compliance-team
+    apiGroup: rbac.authorization.k8s.io
+  - kind: User
+    name: auditor.externo@fintech.internal
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fintech-namespace-admin-binding
+  namespace: fintech-app-prod
+  annotations:
+    description: "Asignación de rol de administrador a nivel de namespace para el equipo de producto"
+    owner: "product-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fintech-namespace-admin-role
+subjects:
+  - kind: Group
+    name: fintech-product-team
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: crossplane-provider
+    namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fintech-namespace-developer-binding
+  namespace: fintech-app-dev
+  annotations:
+    description: "Asignación de rol de developer para entorno de desarrollo"
+    owner: "dev-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fintech-namespace-developer-role
+subjects:
+  - kind: Group
+    name: developers
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fintech-crossplane-binding
+  namespace: crossplane-system
+  annotations:
+    description: "Permisos para que Crossplane provisione recursos en el cluster"
+    owner: "platform-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crossplane-admin-role
+subjects:
+  - kind: ServiceAccount
+    name: crossplane
+    namespace: crossplane-system
+  - kind: ServiceAccount
+    name: crossplane-provider-aws
+    namespace: crossplane-system
+  - kind: ServiceAccount
+    name: crossplane-provider-helm
+    namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fintech-vault-secrets-binding
+  namespace: external-secrets
+  annotations:
+    description: "Permisos para que external-secrets lea secretos de Vault"
+    owner: "security-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-secrets-reader-role
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets
+    namespace: external-secrets
+  - kind: ServiceAccount
+    name: vault-secrets-sync
+    namespace: external-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fintech-disaster-recovery-binding
+  namespace: disaster-recovery
+  annotations:
+    description: "Permisos para el controller de disaster recovery"
+    owner: "sre-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: disaster-recovery-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: failover-controller
+    namespace: disaster-recovery
+  - kind: ServiceAccount
+    name: anti-split-brain-controller
+    namespace: disaster-recovery
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fintech-monitoring-cluster-binding
+  annotations:
+    description: "Permisos para Prometheus y Grafana a nivel de cluster"
+    owner: "monitoring-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+  - kind: ServiceAccount
+    name: grafana
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fintech-argocd-cluster-binding
+  annotations:
+    description: "Permisos para ArgoCD a nivel de cluster para gestión de aplicaciones"
+    owner: "platform-team@fintech.internal"
+    documentation: "https://fintech.internal/docs/rbac-federado"
+    created-by: "rbac-automation"
+    revision: "2024.01"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-admin-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+  - kind: ServiceAccount
+    name: argocd-server
+    namespace: argocd
+  - kind: ServiceAccount
+    name: argocd-repo-server
+    namespace: argocd

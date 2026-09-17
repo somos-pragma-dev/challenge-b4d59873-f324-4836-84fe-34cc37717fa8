@@ -1,0 +1,373 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CrossplaneProviderIAM",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:CreateServiceLinkedRole",
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:role/crossplane-*",
+        "arn:aws:iam::*:instance-profile/crossplane-*"
+      ],
+      "Condition": {
+        "StringLike": {
+          "aws:RequestTag/managed-by": "crossplane"
+        }
+      },
+      "Comment": "Permite a Crossplane gestionar roles e instance profiles necesarios para proveedor AWS. Requiere tagging para auditoría."
+    },
+    {
+      "Sid": "CrossplaneProviderEKS",
+      "Effect": "Allow",
+      "Action": [
+        "eks:CreateCluster",
+        "eks:DeleteCluster",
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:UpdateClusterConfig",
+        "eks:UpdateClusterVersion",
+        "eks:CreateNodegroup",
+        "eks:DeleteNodegroup",
+        "eks:DescribeNodegroup",
+        "eks:ListNodegroups",
+        "eks:UpdateNodegroupConfig",
+        "eks:UpdateNodegroupVersion",
+        "eks:AssociateEncryptionConfig",
+        "eks:AssociateIdentityProviderConfig",
+        "eks:CreateFargateProfile",
+        "eks:DeleteFargateProfile",
+        "eks:DescribeFargateProfile",
+        "eks:ListFargateProfiles",
+        "eks:CreateAddon",
+        "eks:DeleteAddon",
+        "eks:DescribeAddon",
+        "eks:ListAddons",
+        "eks:UpdateAddon",
+        "eks:DescribeIdentityProviderConfig",
+        "eks:ListIdentityProviderConfigs"
+      ],
+      "Resource": "arn:aws:eks:*:*:cluster/*",
+      "Comment": "Permite provisión y gestión de clusters EKS y sus componentes (nodegroups, addons, Fargate profiles).""
+    },
+    {
+      "Sid": "CrossplaneProviderRDS",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBEngineVersions",
+        "rds:ModifyDBInstance",
+        "rds:RebootDBInstance",
+        "rds:CreateDBCluster",
+        "rds:DeleteDBCluster",
+        "rds:DescribeDBClusters",
+        "rds:ModifyDBCluster",
+        "rds:CreateDBSubnetGroup",
+        "rds:DeleteDBSubnetGroup",
+        "rds:DescribeDBSubnetGroups",
+        "rds:CreateDBParameterGroup",
+        "rds:DeleteDBParameterGroup",
+        "rds:DescribeDBParameterGroups",
+        "rds:ModifyDBParameterGroup",
+        "rds:CreateDBOptionGroup",
+        "rds:DeleteDBOptionGroup",
+        "rds:DescribeDBOptionGroups",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "rds:ListTagsForResource",
+        "rds:DescribePendingMaintenanceActions",
+        "rds:PromoteReadReplica",
+        "rds:CreateGlobalReplicationGroup",
+        "rds:DescribeGlobalReplicationGroups",
+        "rds:DeleteGlobalReplicationGroup"
+      ],
+      "Resource": [
+        "arn:aws:rds:*:*:db:*",
+        "arn:aws:rds:*:*:cluster:*",
+        "arn:aws:rds:*:*:subgrp:*",
+        "arn:aws:rds:*:*:pg:*",
+        "arn:aws:rds:*:*:og:*",
+        "arn:aws:rds:*:*:gr:*"
+      ],
+      "Comment": "Permite gestión de instancias y clusters RDS incluyendo bases de datos PostgreSQL/MySQL para aplicaciones fintech."
+    },
+    {
+      "Sid": "CrossplaneProviderS3",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:PutBucketVersioning",
+        "s3:GetBucketOwnershipControls",
+        "s3:PutBucketOwnershipControls",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketPolicy",
+        "s3:GetBucketPolicy",
+        "s3:DeleteBucketPolicy",
+        "s3:PutBucketTagging",
+        "s3:GetBucketTagging",
+        "s3:PutEncryptionConfiguration",
+        "s3:GetEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:PutReplicationConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:PutObjectAcl",
+        "s3:GetObjectAcl",
+        "s3:PutObjectVersionAcl",
+        "s3:GetObjectVersionAcl"
+      ],
+      "Resource": [
+        "arn:aws:s3:::fintech-*",
+        "arn:aws:s3:::fintech-*/*"
+      ],
+      "Comment": "Permite gestión de buckets S3 para almacenamiento de estado, artefactos y logs con replicación cross-region."
+    },
+    {
+      "Sid": "CrossplaneProviderVPC",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateVpc",
+        "ec2:DeleteVpc",
+        "ec2:DescribeVpcs",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateSubnet",
+        "ec2:DeleteSubnet",
+        "ec2:DescribeSubnets",
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateInternetGateway",
+        "ec2:DeleteInternetGateway",
+        "ec2:DescribeInternetGateways",
+        "ec2:AttachInternetGateway",
+        "ec2:DetachInternetGateway",
+        "ec2:CreateNatGateway",
+        "ec2:DeleteNatGateway",
+        "ec2:DescribeNatGateways",
+        "ec2:CreateRouteTable",
+        "ec2:DeleteRouteTable",
+        "ec2:DescribeRouteTables",
+        "ec2:CreateRoute",
+        "ec2:DeleteRoute",
+        "ec2:CreateSecurityGroup",
+        "ec2:DeleteSecurityGroup",
+        "ec2:DescribeSecurityGroups",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:CreateNetworkAcl",
+        "ec2:DeleteNetworkAcl",
+        "ec2:DescribeNetworkAcls",
+        "ec2:CreateNetworkAclEntry",
+        "ec2:DeleteNetworkAclEntry",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteVpcEndpoints",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:CreateEgressOnlyInternetGateway",
+        "ec2:DescribeEgressOnlyInternetGateways"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:RequestTag/environment": ["dev", "staging", "prod"]
+        }
+      },
+      "Comment": "Permite gestión completa de VPCs, subnets, gateways, routing y security groups. Limitado a entornos etiquetados."
+    },
+    {
+      "Sid": "CrossplaneProviderElastiCache",
+      "Effect": "Allow",
+      "Action": [
+        "elasticache:CreateCacheCluster",
+        "elasticache:DeleteCacheCluster",
+        "elasticache:DescribeCacheClusters",
+        "elasticache:ModifyCacheCluster",
+        "elasticache:RebootCacheCluster",
+        "elasticache:CreateCacheSubnetGroup",
+        "elasticache:DeleteCacheSubnetGroup",
+        "elasticache:DescribeCacheSubnetGroups",
+        "elasticache:CreateCacheParameterGroup",
+        "elasticache:DeleteCacheParameterGroup",
+        "elasticache:DescribeCacheParameterGroups",
+        "elasticache:ModifyCacheParameterGroup",
+        "elasticache:CreateReplicationGroup",
+        "elasticache:DeleteReplicationGroup",
+        "elasticache:DescribeReplicationGroups",
+        "elasticache:ModifyReplicationGroup",
+        "elasticache:DescribeEngineDefaultParameters"
+      ],
+      "Resource": "*",
+      "Comment": "Permite gestión de clusters ElastiCache Redis/Memcached para caching de sesiones y datos de aplicación."
+    },
+    {
+      "Sid": "CrossplaneProviderSecretsManager",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:RotateSecret",
+        "secretsmanager:GetRandomPassword"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:fintech/*",
+      "Comment": "Permite gestión de secrets en Secrets Manager para credenciales de bases de datos y APIs externas."
+    },
+    {
+      "Sid": "CrossplaneProviderRoute53",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ListHostedZones",
+        "route53:GetHostedZone",
+        "route53:CreateHostedZone",
+        "route53:DeleteHostedZone",
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/*",
+      "Comment": "Permite gestión de DNS para routing de tráfico entre clusters y failover geográfico."
+    },
+    {
+      "Sid": "ArgoCDClusterAccess",
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:DescribeNodegroup",
+        "eks:ListNodegroups",
+        "eks:DescribeUpdate",
+        "iam:GetRole",
+        "iam:ListRoles",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*",
+      "Comment": "Permite a ArgoCD descubrir y autenticar contra clusters EKS para sincronización de aplicaciones."
+    },
+    {
+      "Sid": "ArgoCDVaultIntegration",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:*:*:secret:fintech/argo/*",
+        "arn:aws:secretsmanager:*:*:secret:fintech/vault/*"
+      ],
+      "Comment": "Permite a ArgoCD acceder a credenciales almacenadas en Secrets Manager para integración con Vault."
+    },
+    {
+      "Sid": "ArgoCDArtifactStorage",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::fintech-argo-artifacts",
+        "arn:aws:s3:::fintech-argo-artifacts/*"
+      ],
+      "Comment": "Permite almacenamiento y recuperación de artefactos de aplicaciones ArgoCD en S3."
+    },
+    {
+      "Sid": "CrossplaneReadOnlyVPCPeering",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcPeeringConnections",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeRegions"
+      ],
+      "Resource": "*",
+      "Comment": "Permite lectura de información de VPC peering y disponibilidad de zonas para planificación de red cross-region."
+    },
+    {
+      "Sid": "CloudWatchObservability",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics",
+        "logs:CreateLogGroup",
+        "logs:DescribeLogGroups",
+        "logs:CreateLogStream",
+        "logs:DescribeLogStreams",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*",
+      "Comment": "Permite envío de métricas y logs para observabilidad de componentes de infraestructura gestionados por Crossplane."
+    },
+    {
+      "Sid": "KMSEncryption",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey",
+        "kms:ListAliases",
+        "kms:ListKeys"
+      ],
+      "Resource": "arn:aws:kms:*:*:key/fintech-*",
+      "Comment": "Permite cifrado de datos en reposo para buckets S3, databases RDS y Secrets Manager."
+    },
+    {
+      "Sid": "AllowCrossplaneTagging",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:DescribeTags",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource",
+        "elasticache:AddTagsToResource",
+        "elasticache:RemoveTagsFromResource",
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": ["managed-by", "environment", "team", "cost-center", "project"]
+        }
+      },
+      "Comment": "Permite etiquetado de recursos creados por Crossplane para auditoría y gestión de costos. Solo etiquetas predefinidas."
+    }
+  ],
+  "Description": "Política IAM para Fintech Multi-Cluster Control Plane con Crossplane y ArgoCD. Otorga permisos granulares para provisión de infraestructura AWS y gestión de aplicaciones GitOps en clusters EKS."
+}
